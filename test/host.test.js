@@ -437,8 +437,8 @@ test('the reassignment roster comes from ZenTao, not from a hard-coded list', as
   const host = setupHost({ secrets: { ZENTAO_PASSWORD: 'pw' } })
   const value = await host.value('users')
   assert.deepEqual(value.users, [
-    { account: 'account', name: '测试用户', role: 'dev' },
-    { account: 'anna', name: '安娜', role: 'qa' },
+    { account: 'account', name: '测试用户', role: 'dev', pinyin: '' },
+    { account: 'anna', name: '安娜', role: 'qa', pinyin: '' },
   ])
   // A second call is served from the cache in lib/zentao.js.
   assert.deepEqual((await host.value('users')).users, value.users)

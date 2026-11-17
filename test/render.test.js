@@ -767,3 +767,48 @@ test('the container picker renders a trigger and an empty catalogue hint', async
   assert.match(render(trigger), /containersLabel/)
   assert.match(render(trigger), /· 2/)
 })
+
+test('the assignee field searches by name, account and initials', async () => {
+  let captured
+  globalThis.window = { __ModuleLoader__: { load: (bundle) => { captured = bundle } } }
+  await import('../lib/client.js')
+  const { fuzzyRank, filterOptions, Combobox } = (captured ?? globalThis.__taskHubBundle).factory(() => fakeReact()).__test
+
+  // Native selects only jump by first character; these ranks drive a real search.
+  assert.equal(fuzzyRank('lijialuo', '李佳洛 · lijialuo'), 1, 'contains')
+  assert.equal(fuzzyRank('李佳洛', '李佳洛 · lijialuo'), 0, 'prefix')
+  assert.equal(fuzzyRank('ljl', '李佳洛 · lijialuo'), 2, 'subsequence on the account')
+  assert.equal(fuzzyRank('lj', '李佳洛 · lijialuo'), 2)
+  assert.equal(fuzzyRank('zzz', '李佳洛 · lijialuo'), null)
+  assert.equal(fuzzyRank('   ', 'anything'), 0, 'empty query keeps everything')
+
+  const users = [
+    { value: 'lijialuo', label: '李佳洛 · lijialuo' },
+    { value: 'lixinghui', label: '李星辉 · lixinghui' },
+    { value: 'zhangjinghong', label: 'Johnny 张惊鸿 · zhangjinghong' },
+  ]
+  assert.deepEqual(filterOptions(users, 'ljl').map((u) => u.value), ['lijialuo'])
+  assert.deepEqual(filterOptions(users, '李').map((u) => u.value), ['lijialuo', 'lixinghui'])
+  assert.deepEqual(filterOptions(users, 'johnny').map((u) => u.value), ['zhangjinghong'])
+  assert.deepEqual(filterOptions(users, '').map((u) => u.value), ['lijialuo', 'lixinghui', 'zhangjinghong'])
+  assert.deepEqual(filterOptions(users, 'qqq'), [])
+
+  // The trigger shows the current choice and advertises itself as a listbox.
+  const closed = Combobox({
+    value: 'lixinghui',
+    options: users,
+    onChange: () => {},
+    placeholder: 'pick',
+    ariaLabel: 'assignee',
+    allowEmpty: true,
+    emptyLabel: 'keep',
+  })
+  assert.equal(closed.props.className, 'tt-combo')
+  const trigger = closed.props.children[0]
+  assert.equal(trigger.props.children, '李星辉 · lixinghui')
+  assert.equal(trigger.props['aria-haspopup'], 'listbox')
+  assert.equal(trigger.props['aria-expanded'], 'false')
+  // Nothing selected yet: the empty option names itself on the trigger.
+  const empty = Combobox({ value: '', options: users, onChange: () => {}, allowEmpty: true, emptyLabel: '（不改变）' })
+  assert.equal(empty.props.children[0].props.children, '（不改变）')
+})
