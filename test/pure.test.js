@@ -8,7 +8,9 @@ import { worktreePathFor } from '../lib/dispatch.js'
 test('normalizeSettings fills every ZenTao default', () => {
   const settings = normalizeSettings({})
   assert.equal(settings.zentao.baseUrl, '')
-  assert.equal(settings.zentao.apiVersion, 'v1')
+  assert.equal(settings.zentao.transport, 'v1')
+  assert.equal(settings.zentao.cliBin, 'zentao')
+  assert.equal(settings.zentao.myWork, true)
   assert.equal(settings.zentao.scope, 'product')
   assert.deepEqual(settings.zentao.containerIds, [])
   assert.deepEqual(settings.zentao.containerNames, {})
@@ -48,12 +50,20 @@ test('normalizeSettings dedupes container ids and drops names for unknown ids', 
   assert.deepEqual(normalizeSettings({ zentao: { containerId: 3, containerIds: [] } }).zentao.containerIds, [])
 })
 
-test('normalizeSettings accepts only known scopes and API versions', () => {
+test('normalizeSettings accepts only known scopes and channels', () => {
   assert.equal(normalizeSettings({ zentao: { scope: 'bug' } }).zentao.scope, 'bug')
   assert.equal(normalizeSettings({ zentao: { scope: 'everything' } }).zentao.scope, 'product')
-  assert.equal(normalizeSettings({ zentao: { apiVersion: 'v2' } }).zentao.apiVersion, 'v2')
-  assert.equal(normalizeSettings({ zentao: { apiVersion: 'auto' } }).zentao.apiVersion, 'auto')
-  assert.equal(normalizeSettings({ zentao: { apiVersion: 'v3' } }).zentao.apiVersion, 'v1')
+  assert.equal(normalizeSettings({ zentao: { transport: 'v2' } }).zentao.transport, 'v2')
+  assert.equal(normalizeSettings({ zentao: { transport: 'cli' } }).zentao.transport, 'cli')
+  assert.equal(normalizeSettings({ zentao: { transport: 'v3' } }).zentao.transport, 'v1')
+})
+
+test('normalizeSettings migrates the old apiVersion field into transport', () => {
+  assert.equal(normalizeSettings({ zentao: { apiVersion: 'v2' } }).zentao.transport, 'v2')
+  assert.equal(normalizeSettings({ zentao: { apiVersion: 'auto' } }).zentao.transport, 'auto')
+  assert.equal(normalizeSettings({ zentao: { apiVersion: 'v3' } }).zentao.transport, 'v1')
+  // transport wins when both are present.
+  assert.equal(normalizeSettings({ zentao: { transport: 'cli', apiVersion: 'v2' } }).zentao.transport, 'cli')
 })
 
 test('normalizeSettings ignores fields owned by other plugins', () => {

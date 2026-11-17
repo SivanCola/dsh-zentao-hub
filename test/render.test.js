@@ -345,10 +345,24 @@ test('the ZenTao picker supports multiple checkboxes and keeps scope IDs separat
   }))
   const rows = () => settings().filter((node) => node.props?.className === 'tt-proj-row')
   assert.equal(settings().find((node) => node.props?.label === 'provider'), undefined)
-  const version = settings().find((node) => node.props?.label === 'zentaoApiVersion')
-  assert.equal(version.props.children.props.value, 'v1')
-  version.props.children.props.onChange({ target: { value: 'v2' } })
-  assert.equal(draft.zentao.apiVersion, 'v2')
+  const transport = settings().find((node) => node.props?.label === 'zentaoTransport')
+  assert.equal(transport.props.children.props.value, 'v1')
+  transport.props.children.props.onChange({ target: { value: 'v2' } })
+  assert.equal(draft.zentao.transport, 'v2')
+  // v2 adds the server-side 地盘 switch; the container picker stays available.
+  const myWork = settings().find((node) => node.type === 'label' && node.props?.className === 'tt-check')
+  assert.ok(myWork, 'the 地盘 switch should appear for v2')
+  assert.deepEqual(rows().map((row) => row.props.key), ['product:1'])
+
+  // The CLI channel owns its login and drops the container picker entirely.
+  transport.props.children.props.onChange({ target: { value: 'cli' } })
+  assert.equal(draft.zentao.transport, 'cli')
+  const cliBin = settings().find((node) => node.props?.label === 'zentaoCliBin')
+  assert.ok(cliBin, 'the CLI shows a binary path field')
+  cliBin.props.children.props.onChange({ target: { value: 'npx zentao-cli' } })
+  assert.equal(draft.zentao.cliBin, 'npx zentao-cli')
+  assert.deepEqual(rows(), [])
+  transport.props.children.props.onChange({ target: { value: 'v1' } })
   assert.deepEqual(rows().map((row) => row.props.key), ['product:1'])
   assert.equal(rows()[0].props.children[0].props.checked, true)
 
@@ -512,4 +526,96 @@ test('a new conversation on a dispatched task shows the saved branch and skips c
   const extra = nodes.find((node) => node.type === 'details')
   assert.equal(extra.props.open, undefined)
   assert.ok(!nodes.some((node) => node.type === 'input' || node.type === 'select'))
+})
+
+test('the sidebar icon injects its own badge source and draws the count', async () => {
+  let captured
+  globalThis.window = { __ModuleLoader__: { load: (bundle) => { captured = bundle } } }
+  await import('../lib/client.js')
+  const client = (captured ?? globalThis.__taskHubBundle).factory(() => fakeReact())
+  const registered = []
+  client.apply({
+    effect: (fn) => fn(),
+    on: () => () => {},
+    get: () => undefined,
+    locale: { register: () => {}, bind: () => (key) => key },
+    slots: {
+      inject: (_slot, fn) => fn(),
+      register: (spec, component) => {
+        registered.push({ spec, component })
+        return () => {}
+      },
+    },
+  })
+  const icon = registered.find((entry) => entry.spec.name === 'sidebar.panellist')
+  assert.ok(icon, 'sidebar icon not registered')
+  // The only supported way to feed a panel icon: inject -> hooks -> prop.
+  const injected = icon.spec.inject()
+  assert.deepEqual(Object.keys(injected), ['hooks'])
+  assert.equal(typeof injected.hooks.badge.getSnapshot, 'function')
+
+  const { Badge } = client.__test
+  assert.equal(Badge({ count: 0 }), null)
+  assert.equal(Badge({ count: 3 }).props.className, 'tt-nav-badge')
+  assert.equal(Badge({ count: 3 }).props.children, '3')
+  assert.equal(Badge({ count: 640 }).props.children, '99+')
+
+  const empty = render(icon.component({ size: 16, active: false, useBadge: (select) => select({ open: 0 }) }))
+  assert.equal(empty, '<span><svg><rect></rect><path></path><circle></circle></svg></span>')
+
+  const three = render(icon.component({ size: 16, active: true, useBadge: (select) => select({ open: 3 }) }))
+  assert.match(three, /<span>3<\/span>/)
+  assert.ok(three.indexOf('<svg>') < three.indexOf('<span>3<'), 'badge follows the glyph')
+
+  const many = render(icon.component({ size: 16, active: false, useBadge: (select) => select({ open: 640 }) }))
+  assert.match(many, /99\+/)
+
+  // Without the injected hook (older renderer) the icon still draws.
+  const bare = render(icon.component({ size: 16, active: false }))
+  assert.match(bare, /svg/)
+})
+
+test('the bug matrix groups 严重程度 × 状态 and keeps strays reachable', async () => {
+  let captured
+  globalThis.window = { __ModuleLoader__: { load: (bundle) => { captured = bundle } } }
+  await import('../lib/client.js')
+  const { bugMatrix } = (captured ?? globalThis.__taskHubBundle).factory(() => fakeReact()).__test
+
+  const items = [
+    { id: 'bug-1', severity: 'P1', status: 'active' },
+    { id: 'bug-2', severity: 'P1', status: 'active' },
+    { id: 'bug-3', severity: 'P2', status: 'resolved' },
+    { id: 'bug-4', severity: 'P2', status: 'closed' },
+    { id: 'bug-5', severity: '', status: 'active' },
+    { id: 'bug-6', severity: 'P3', status: 'weird' },
+  ]
+  const matrix = bugMatrix(items)
+  assert.deepEqual(matrix.statuses.map((status) => status.key), ['active', 'resolved', 'closed'])
+  assert.deepEqual(matrix.rows.map((row) => row.key), ['P1', 'P2', 'P3', 'P4', ''])
+
+  const cell = (severity, status) =>
+    matrix.rows.find((row) => row.key === severity).cells.find((entry) => entry.key === status).items
+  assert.equal(cell('P1', 'active').length, 2)
+  assert.equal(cell('P2', 'resolved').length, 1)
+  assert.equal(cell('P4', 'active').length, 0)
+  assert.equal(cell('', 'active').length, 1)
+  // A status outside the three columns must not vanish from the board.
+  assert.deepEqual(matrix.stray.map((item) => item.id), ['bug-6'])
+})
+
+test('the write button only appears where a transition makes sense', async () => {
+  let captured
+  globalThis.window = { __ModuleLoader__: { load: (bundle) => { captured = bundle } } }
+  await import('../lib/client.js')
+  const { WriteButton } = (captured ?? globalThis.__taskHubBundle).factory(() => fakeReact()).__test
+  const t = (key) => key
+  const onWrite = () => {}
+
+  assert.match(render(WriteButton({ story: { kind: 'task', status: 'wait' }, t, onWrite })), /writeStart/)
+  assert.equal(WriteButton({ story: { kind: 'task', status: 'wait' }, t }), null)
+  assert.equal(WriteButton({ story: { kind: 'task', status: 'doing' }, t, onWrite }), null)
+  assert.equal(WriteButton({ story: { kind: 'task', status: 'wait', completed: true }, t, onWrite }), null)
+  assert.match(render(WriteButton({ story: { kind: 'bug', status: 'active' }, t, onWrite })), /writeResolve/)
+  assert.equal(WriteButton({ story: { kind: 'bug', status: 'resolved', resolved: true }, t, onWrite }), null)
+  assert.equal(WriteButton({ story: { kind: 'story', requirementType: 'story' }, t, onWrite }), null)
 })

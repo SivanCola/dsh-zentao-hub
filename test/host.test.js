@@ -129,14 +129,22 @@ test('the host registers its routes under /api/zentao and reports state', async 
   assert.deepEqual(paths, [
     '/api/zentao/asset',
     '/api/zentao/containers',
+    '/api/zentao/counts',
     '/api/zentao/dispatch',
     '/api/zentao/settings',
     '/api/zentao/state',
     '/api/zentao/status',
     '/api/zentao/tasks',
+    '/api/zentao/write',
   ])
   const state = await host.value('state')
-  assert.equal(state.settings.zentao.apiVersion, 'v1')
+  assert.equal(state.settings.zentao.transport, 'v1')
+  assert.deepEqual(state.capabilities, {
+    channel: 'v1',
+    myWork: false,
+    writeBack: false,
+    assets: true,
+  })
   assert.equal(state.credentials.zentao.password, true)
   assert.equal(state.credentialPresence.password, true)
   assert.equal(state.dataDir, store.DATA_DIR)
@@ -150,13 +158,13 @@ test('settings refuse to keep a login for a different site, version or account',
     if (String(url).endsWith('/tokens')) return Response.json({ token: 'tk' })
     return Response.json({ products: [], projects: [], executions: [] })
   })
-  await store.saveSettings({ zentao: { baseUrl: 'https://zentao.example.test', account: 'account' } })
+  await store.saveSettings({ zentao: { baseUrl: 'https://zentao.example.test', transport: 'v1', account: 'account' } })
   const host = setupHost({ secrets: { ZENTAO_PASSWORD: 'saved' } })
   await host.value('containers', { baseUrl: 'https://zentao.example.test/api.php/v1' })
 
   for (const change of [
     { baseUrl: 'https://different.example.test', account: 'account' },
-    { baseUrl: 'https://zentao.example.test', apiVersion: 'v2', account: 'account' },
+    { baseUrl: 'https://zentao.example.test', transport: 'v2', account: 'account' },
     { baseUrl: 'https://zentao.example.test', account: 'someone-else' },
   ]) {
     assert.equal((await host.call('containers', change)).error.code, 'zentao/missing-credentials')
@@ -166,10 +174,10 @@ test('settings refuse to keep a login for a different site, version or account',
   assert.equal((await store.loadSettings()).zentao.baseUrl, 'https://zentao.example.test')
 
   const saved = await host.value('settings', {
-    zentao: { baseUrl: 'https://zentao.example.test', apiVersion: 'v2', account: 'account' },
+    zentao: { baseUrl: 'https://zentao.example.test', transport: 'v2', account: 'account' },
     zentaoPassword: 'new-password',
   })
-  assert.equal(saved.settings.zentao.apiVersion, 'v2')
+  assert.equal(saved.settings.zentao.transport, 'v2')
 })
 
 test('tasks list what ZenTao assigned to me and merge the dispatch record', async (t) => {
@@ -179,7 +187,7 @@ test('tasks list what ZenTao assigned to me and merge the dispatch record', asyn
     excludeCompleted: true,
     zentao: {
       baseUrl: 'https://zentao.example.test',
-      apiVersion: 'v1',
+      transport: 'v1',
       account: 'account',
       scope: 'product',
       containerIds: ['7'],
@@ -210,7 +218,7 @@ test('tasks list what ZenTao assigned to me and merge the dispatch record', asyn
 test('the bug scope goes through /products/{id}/bugs and keeps severity', async (t) => {
   t.mock.method(globalThis, 'fetch', trackerFetch)
   await store.saveSettings({
-    zentao: { baseUrl: 'https://zentao.example.test', apiVersion: 'v1', account: 'account', scope: 'bug', containerIds: ['7'] },
+    zentao: { baseUrl: 'https://zentao.example.test', transport: 'v1', account: 'account', scope: 'bug', containerIds: ['7'] },
   })
   const host = setupHost({ secrets: { ZENTAO_PASSWORD: 'pw' } })
   const tasks = await host.value('tasks')
@@ -222,7 +230,7 @@ test('the bug scope goes through /products/{id}/bugs and keeps severity', async 
 
 test('a missing password is reported as a setup error, not a crash', async () => {
   await store.saveSettings({
-    zentao: { baseUrl: 'https://zentao.example.test', apiVersion: 'v1', account: 'account', scope: 'product', containerIds: ['7'] },
+    zentao: { baseUrl: 'https://zentao.example.test', transport: 'v1', account: 'account', scope: 'product', containerIds: ['7'] },
   })
   const host = setupHost({})
   const result = await host.call('tasks')
@@ -260,7 +268,7 @@ test('a cold start imports the task hub directory, ZenTao half only', async () =
   const result = JSON.parse(stdout.trim().split('\n').at(-1))
   assert.equal(result.settings.zentao.baseUrl, 'https://legacy.example.test')
   assert.deepEqual(result.settings.zentao.containerIds, ['9'])
-  assert.equal(result.settings.zentao.apiVersion, 'v1')
+  assert.equal(result.settings.zentao.transport, 'v1')
   assert.equal(result.settings.excludeCompleted, false)
   assert.equal('tapd' in result.settings, false)
   assert.deepEqual(Object.keys(result.state), ['zentao:story-9'])

@@ -2,7 +2,7 @@
   "name": "dsh-zentao",
   "version": "0.1.0",
   "type": "module",
-  "description": "ZenTao panel for DSH: list the requirements, tasks and bugs assigned to you, then dispatch a DSH agent on a branch you name.",
+  "description": "ZenTao panel for DSH: list the requirements, tasks and bugs assigned to you through the REST API or zentao-cli, dispatch an agent on a branch you name, and write the outcome back.",
   "license": "MIT",
   "keywords": [
     "dsh",
@@ -10,6 +10,7 @@
     "deepseek-harness",
     "zentao",
     "禅道",
+    "zentao-cli",
     "issue-tracker",
     "workflow",
     "agent"
@@ -32,6 +33,8 @@
     "lib/client.js",
     "lib/zentao.js",
     "lib/work.js",
+    "lib/cli.js",
+    "lib/writeback.js",
     "lib/store.js",
     "lib/checkout.js",
     "lib/dispatch.js",
@@ -40,7 +43,8 @@
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
-    "assets/icon-512.png"
+    "assets/icon-512.png",
+    "docs/zentao-api-notes.md"
   ],
   "dsh": {
     "bundle": {

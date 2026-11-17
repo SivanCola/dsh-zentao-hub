@@ -303,7 +303,7 @@ test('listWork translates client errors and hides completed items by default', a
     throw new Error(`unexpected ${url}`)
   }
   const settings = {
-    zentao: { baseUrl: BASE, apiVersion: 'v1', scope: 'product', containerIds: ['9'], containerNames: { 9: '产品 A' } },
+    zentao: { baseUrl: BASE, transport: 'v1', scope: 'product', containerIds: ['9'], containerNames: { 9: '产品 A' } },
   }
   const result = await listWork({ settings, credentials: CREDS, fetchImpl })
   assert.equal(result.items.length, 1)
@@ -328,7 +328,7 @@ test('fetchWork and fetchAssets go through the adapter with the saved settings',
     if (parsed.pathname === '/api.php/v1/tasks/31') return json({ task: { id: 31, name: '写接口', desc: '细节' } })
     throw new Error(`unexpected ${url}`)
   }
-  const settings = { zentao: { baseUrl: BASE, apiVersion: 'v1' } }
+  const settings = { zentao: { baseUrl: BASE, transport: 'v1' } }
   const fresh = await fetchWork({
     settings,
     credentials: CREDS,
