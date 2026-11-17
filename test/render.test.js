@@ -812,3 +812,67 @@ test('the assignee field searches by name, account and initials', async () => {
   const empty = Combobox({ value: '', options: users, onChange: () => {}, allowEmpty: true, emptyLabel: '（不改变）' })
   assert.equal(empty.props.children[0].props.children, '（不改变）')
 })
+
+test('the assignee control distinguishes its trigger from its search box', async () => {
+  let captured
+  globalThis.window = { __ModuleLoader__: { load: (bundle) => { captured = bundle } } }
+  await import('../lib/client.js')
+  const client = (captured ?? globalThis.__taskHubBundle).factory(() => fakeReact())
+  const { Combobox, personLabel, Field, WriteModal } = client.__test
+
+  // Closed and empty: the trigger names the action, the search placeholder
+  // belongs to the input inside the list.
+  const combo = Combobox({
+    value: '',
+    options: [{ value: 'anna', label: '安娜 · anna' }],
+    onChange: () => {},
+    placeholder: '搜索姓名或账号',
+    selectLabel: '选择人员',
+    ariaLabel: 'assignedTo',
+  })
+  assert.equal(combo.props.children[0].props.children, '选择人员')
+  assert.match(combo.props.children[0].props.className, /tt-combo-empty/)
+
+  // "admin · admin" says nothing twice.
+  assert.equal(personLabel({ name: 'admin', account: 'admin' }), 'admin')
+  assert.equal(personLabel({ name: '李佳洛', account: 'lijialuo' }), '李佳洛 · lijialuo')
+  assert.equal(personLabel({ name: '', account: 'lijialuo' }), 'lijialuo')
+  assert.equal(personLabel({ name: '安娜', account: '' }), '安娜')
+
+  // The hint can sit above the control so an expanded list cannot push it away.
+  const above = Field({ label: 'l', hint: 'h', hintFirst: true, children: 'control' })
+  assert.equal(above.props.children[1].props.className, 'tt-hint')
+  assert.equal(above.props.children[2], 'control')
+  const below = Field({ label: 'l', hint: 'h', children: 'control' })
+  assert.equal(below.props.children[1], 'control')
+  assert.equal(below.props.children[2].props.className, 'tt-hint')
+
+  // A failed plan is painted as a failure, not as the summary.
+  const modal = WriteModal({
+    t: (key) => key,
+    item: { id: 'task-1', shortId: '#1', name: 'x', kind: 'task' },
+    action: 'assign',
+    input: { assignedTo: '' },
+    setInput: () => {},
+    plan: null,
+    planError: '请选择要指派给的人',
+    busy: false,
+    error: null,
+    resolutions: [],
+    bugTypes: [],
+    users: [],
+    peopleError: '',
+    onSubmit: () => {},
+    onClose: () => {},
+  })
+  let errorNode = null
+  const walk = (node) => {
+    if (!node || typeof node !== 'object' || errorNode) return
+    if (node.props?.className === 'tt-plan-error') errorNode = node
+    const kids = node.props?.children
+    for (const kid of Array.isArray(kids) ? kids : [kids]) walk(kid)
+  }
+  walk(modal)
+  assert.ok(errorNode, 'the plan error gets its own style')
+  assert.equal(errorNode.props.children, '请选择要指派给的人')
+})
