@@ -4,6 +4,14 @@
   "type": "module",
   "description": "ZenTao panel for DSH: list the requirements, tasks and bugs assigned to you through the REST API or zentao-cli, dispatch an agent on a branch you name, and write the outcome back.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SivanCola/dsh-zentao.git"
+  },
+  "homepage": "https://github.com/SivanCola/dsh-zentao#readme",
+  "bugs": {
+    "url": "https://github.com/SivanCola/dsh-zentao/issues"
+  },
   "keywords": [
     "dsh",
     "dsh-plugin",
