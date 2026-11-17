@@ -53,10 +53,11 @@ ZenTao API 2.0's 239 paths contain **no standalone "add comment" endpoint** — 
 ## Install
 
 ```sh
-dsh plugin --profile web add github:SivanCola/dsh-zentao-hub
+dsh plugin --profile web add dsh-zentao-hub                     # from npm (recommended)
+dsh plugin --profile web add github:SivanCola/dsh-zentao-hub    # or straight from GitHub
 ```
 
-> **Package vs repo name:** the package is `dsh-zentao-hub`, and so is the repository (`dsh-zentao` on npm belongs to an unrelated plugin, which is why this name was avoided). Nothing is published to npm yet, so install with the GitHub command above.
+> **Package and repo name** are both `dsh-zentao-hub`. The name avoids `dsh-zentao`, which belongs to an unrelated plugin on npm.
 
 Restart `dsh web` afterwards; a 「禅道」 entry appears in the sidebar. On desktop, install from **Settings → Plugins**. Requires DSH 0.2.1+. The `cli` channel additionally needs `npm i -g zentao-cli` (0.4.4+ recommended) and a prior `zentao auth login`.
 
