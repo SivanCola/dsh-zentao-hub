@@ -172,7 +172,7 @@ test('v2 reads /my/tasks instead of enumerating containers', async () => {
     const parsed = new URL(url)
     seen.push(`${init?.method ?? 'GET'} ${parsed.pathname}`)
     if (parsed.pathname === '/api.php/v2/users/login') return json({ token: 'tk' })
-    if (parsed.pathname === '/api.php/v2/user') return json({ profile: { account: 'spring' } })
+    if (parsed.pathname === '/api.php/v2/users/me') return json({ user: { account: 'spring' } })
     if (parsed.pathname === '/api.php/v2/my/tasks') {
       return json({ data: { tasks: [{ id: 31, name: '写接口', status: 'doing', assignedTo: 'spring' }] } })
     }
@@ -196,7 +196,7 @@ test('v2 falls back to container enumeration when /my is too old', async () => {
     const parsed = new URL(url)
     seen.push(parsed.pathname)
     if (parsed.pathname === '/api.php/v2/users/login') return json({ token: 'tk' })
-    if (parsed.pathname === '/api.php/v2/user') return json({ profile: { account: 'spring' } })
+    if (parsed.pathname === '/api.php/v2/users/me') return json({ user: { account: 'spring' } })
     if (parsed.pathname === '/api.php/v2/my/stories') return json({ error: 'not found' }, 404)
     if (parsed.pathname === '/api.php/v2/products/9/stories') {
       return json({ data: [{ id: 1, title: '需求', assignedTo: 'spring', status: 'active', type: 'story' }] })
@@ -269,7 +269,7 @@ test('executeWrite PUTs the v2 transition and re-reads the item', async () => {
     const parsed = new URL(url)
     calls.push({ method: init?.method ?? 'GET', path: parsed.pathname, body: init?.body ? JSON.parse(init.body) : null })
     if (parsed.pathname === '/api.php/v2/users/login') return json({ token: 'tk' })
-    if (parsed.pathname === '/api.php/v2/user') return json({ profile: { account: 'spring' } })
+    if (parsed.pathname === '/api.php/v2/users/me') return json({ user: { account: 'spring' } })
     if (parsed.pathname === '/api.php/v2/tasks/31/start') return json({ status: 'success' })
     if (parsed.pathname === '/api.php/v2/tasks/31') {
       return json({ task: { id: 31, name: '写接口', status: 'doing', assignedTo: 'spring' } })
@@ -323,7 +323,7 @@ test('executeWrite reports a failed verification instead of claiming success', a
   const fetchImpl = async (url, init) => {
     const parsed = new URL(url)
     if (parsed.pathname === '/api.php/v2/users/login') return json({ token: 'tk' })
-    if (parsed.pathname === '/api.php/v2/user') return json({ profile: { account: 'spring' } })
+    if (parsed.pathname === '/api.php/v2/users/me') return json({ user: { account: 'spring' } })
     if (parsed.pathname === '/api.php/v2/bugs/9/resolve' && init?.method === 'PUT') return json({ status: 'success' })
     return json({ error: 'boom' }, 500)
   }
@@ -338,4 +338,87 @@ test('executeWrite reports a failed verification instead of claiming success', a
   assert.equal(result.ok, true)
   assert.equal(result.verification, null)
   assert.match(result.verifyError, /500|boom/)
+})
+
+test('finish, activate, assign and confirm each build their own payload', () => {
+  const settings = { zentao: { transport: 'v2' } }
+  const task = { id: 'task-31', kind: 'task', name: '写接口' }
+  const bug = { id: 'bug-9', kind: 'bug', name: '页面报错' }
+
+  const finish = planWrite({
+    settings,
+    item: task,
+    action: 'finish',
+    input: { currentConsumed: '2', realStarted: '2026-11-11 09:00:00', finishedDate: '2026-11-17 18:00:00', comment: '做完了' },
+  })
+  assert.equal(finish.request.method, 'PUT')
+  assert.equal(finish.request.path, '/tasks/31/finish')
+  assert.deepEqual(finish.request.body, {
+    currentConsumed: 2,
+    realStarted: '2026-11-11 09:00:00',
+    finishedDate: '2026-11-17 18:00:00',
+    comment: '做完了',
+  })
+  // ZenTao answers E2003 unless all three are present, so they are checked here.
+  assert.throws(() => planWrite({ settings, item: task, action: 'finish', input: {} }), /本次消耗/)
+
+  const activate = planWrite({ settings, item: task, action: 'activate', input: { left: '3', assignedTo: 'anna' } })
+  assert.equal(activate.request.path, '/tasks/31/activate')
+  assert.deepEqual(activate.request.body, { left: 3, assignedTo: 'anna' })
+
+  const assign = planWrite({ settings, item: task, action: 'assign', input: { assignedTo: 'anna' } })
+  assert.equal(assign.request.path, '/tasks/31')
+  assert.deepEqual(assign.request.body, { assignedTo: 'anna' })
+  assert.match(assign.summary, /指派给 anna/)
+  assert.throws(() => planWrite({ settings, item: task, action: 'assign', input: {} }), /请选择/)
+
+  const confirm = planWrite({ settings, item: bug, action: 'confirm', input: { type: 'codeerror', assignedTo: 'anna' } })
+  assert.equal(confirm.request.path, '/bugs/9/confirm')
+  assert.deepEqual(confirm.request.body, { type: 'codeerror', assignedTo: 'anna' })
+  assert.throws(() => planWrite({ settings, item: bug, action: 'confirm', input: { type: 'nope' } }), /Bug 类型/)
+
+  // Kind guards keep a bug from being "finished" and a story from being reassigned.
+  assert.throws(() => planWrite({ settings, item: bug, action: 'finish', input: { currentConsumed: 1 } }), /只有任务/)
+  assert.throws(
+    () => planWrite({ settings, item: { id: 'story-3', kind: 'story' }, action: 'assign', input: { assignedTo: 'a' } }),
+    /任务和 Bug/,
+  )
+})
+
+test('the CLI channel mirrors the new actions with its own flags', () => {
+  const task = { id: 'task-31', kind: 'task' }
+  const finish = writeArgs({
+    action: 'finish',
+    item: task,
+    input: { currentConsumed: 2, realStarted: '2026-11-11 09:00:00', finishedDate: '2026-11-17 18:00:00' },
+  })
+  assert.deepEqual(finish.args, [
+    'task', 'finish', '--task-id=31',
+    '--current-consumed=2',
+    '--real-started=2026-11-11 09:00:00',
+    '--finished-date=2026-11-17 18:00:00',
+  ])
+  const activate = writeArgs({ action: 'activate', item: task, input: { left: 3 } })
+  assert.deepEqual(activate.args, ['task', 'activate', '--task-id=31', '--left=3'])
+  const assign = writeArgs({ action: 'assign', item: task, input: { assignedTo: 'anna' } })
+  assert.deepEqual(assign.args, ['task', 'update', '--task-id=31', '--assigned-to=anna'])
+  assert.throws(
+    () => writeArgs({ action: 'assign', item: { id: 'story-3', kind: 'story' }, input: { assignedTo: 'a' } }),
+    /任务和 Bug/,
+  )
+  const confirm = writeArgs({ action: 'confirm', item: { id: 'bug-9', kind: 'bug' }, input: { type: 'codeerror' } })
+  assert.deepEqual(confirm.args, ['bug', 'confirm', '--bug-id=9', '--type=codeerror'])
+})
+
+test('transitions refuse an item kind they cannot address', () => {
+  const settings = { zentao: { transport: 'v2' } }
+  const story = { id: 'story-3', kind: 'story' }
+  // A story id must never be sent to /tasks/{id}/<action>.
+  for (const action of ['close', 'activate', 'start', 'finish', 'resolve', 'confirm', 'assign']) {
+    assert.throws(
+      () => planWrite({ settings, item: story, action, input: { currentConsumed: 1, assignedTo: 'a', resolution: 'fixed' } }),
+      /只有任务|只有 Bug|任务和 Bug|重新激活任务和 Bug|关闭任务和 Bug/,
+      action,
+    )
+  }
 })

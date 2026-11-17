@@ -3,6 +3,8 @@ import test from 'node:test'
 
 import {
   apiRoot,
+  fetchMe,
+  fetchMyItems,
   fetchMyWork,
   fetchWorkAssets,
   fetchWorkDetails,
@@ -112,7 +114,7 @@ test('v2 signs in at /users/login and reads each requirement collection', async 
     const parsed = new URL(url)
     paths.push(parsed.pathname + parsed.search)
     if (parsed.pathname === '/api.php/v2/users/login') return json({ status: 'success', token: 'v2-token' })
-    if (parsed.pathname === '/api.php/v2/user') return json({ profile: { account: 'spring' } })
+    if (parsed.pathname === '/api.php/v2/users/me') return json({ user: { account: 'spring' } })
     if (parsed.pathname === '/api.php/v2/products/9/stories') {
       return json({ data: [{ id: 1, title: '研发需求', type: 'story', assignedTo: 'spring', status: 'active' }] })
     }
@@ -147,7 +149,7 @@ test('v2 reads project tasks with status=all so completed work is not lost', asy
   const fetchImpl = async (url) => {
     const parsed = new URL(url)
     if (parsed.pathname === '/api.php/v2/users/login') return json({ token: 'v2' })
-    if (parsed.pathname === '/api.php/v2/user') return json({ profile: { account: 'spring' } })
+    if (parsed.pathname === '/api.php/v2/users/me') return json({ user: { account: 'spring' } })
     if (parsed.pathname === '/api.php/v2/projects/5/executions') return json({ data: [{ id: 11, name: '迭代 11' }] })
     if (parsed.pathname === '/api.php/v2/executions/11/tasks') {
       taskQuery = parsed.search
@@ -340,4 +342,90 @@ test('fetchWork and fetchAssets go through the adapter with the saved settings',
   const assets = await fetchAssets({ settings, credentials: CREDS, story: { description: '', sourceFiles: [] }, fetchImpl })
   assert.deepEqual(assets, { files: [], images: [] })
   await assert.rejects(() => fetchWork({ settings, credentials: CREDS, story: null, fetchImpl }), /缺少任务信息/)
+})
+
+test('fetchMe asks the route each API generation mounts', async () => {
+  resetZentaoTokens()
+  const seen = []
+  const fetchImpl = async (url) => {
+    const parsed = new URL(url)
+    seen.push(parsed.pathname)
+    if (parsed.pathname.endsWith('/tokens') || parsed.pathname.endsWith('/users/login')) return json({ token: 'tk' })
+    if (parsed.pathname === '/api.php/v2/users/me') return json({ status: 'success', user: { account: 'spring', realname: '测试用户' } })
+    if (parsed.pathname === '/api.php/v1/user') return json({ profile: { account: 'spring', realname: '测试用户' } })
+    // ZenTao answers 401 for a route the generation does not mount.
+    return new Response('{"error":"Unauthorized"}', { status: 401 })
+  }
+  const v2 = await fetchMe({ baseUrl: BASE, version: 'v2', credentials: CREDS, fetchImpl })
+  assert.deepEqual(v2, { account: 'spring', name: '测试用户' })
+  assert.ok(seen.includes('/api.php/v2/users/me'))
+  assert.ok(!seen.includes('/api.php/v2/user'))
+
+  seen.length = 0
+  const v1 = await fetchMe({ baseUrl: BASE, version: 'v1', credentials: CREDS, fetchImpl })
+  assert.deepEqual(v1, { account: 'spring', name: '测试用户' })
+  assert.ok(seen.includes('/api.php/v1/user'))
+  assert.ok(!seen.includes('/api.php/v1/users/me'))
+})
+
+test('a build without either me-route still lists my work', async () => {
+  resetZentaoTokens()
+  const fetchImpl = async (url) => {
+    const parsed = new URL(url)
+    if (parsed.pathname === '/api.php/v2/users/login') return json({ token: 'v2' })
+    if (parsed.pathname === '/api.php/v2/users/me' || parsed.pathname === '/api.php/v2/user') {
+      return new Response('{"error":"Unauthorized"}', { status: 401 })
+    }
+    if (parsed.pathname === '/api.php/v2/my/tasks') {
+      return json({
+        status: 'success',
+        pager: { recTotal: 2, recPerPage: 200, pageID: 1 },
+        tasks: [
+          { id: 2260, name: '调研-backend', assignedTo: 'spring', status: 'wait' },
+          { id: 2255, name: 'banner-backend', assignedTo: 'spring', status: 'done' },
+        ],
+      })
+    }
+    throw new Error(`unexpected ${url}`)
+  }
+  const mine = await fetchMyItems({ baseUrl: BASE, version: 'v2', credentials: CREDS, scope: 'project', fetchImpl })
+  assert.deepEqual(mine.me, { account: 'spring', name: '' })
+  assert.equal(mine.items.length, 2)
+  assert.equal(mine.items.filter((item) => item.completed).length, 1)
+})
+
+test('v2 pagers use recTotal, so the second page is still fetched', async () => {
+  resetZentaoTokens()
+  const pages = []
+  const row = (id) => ({ id, name: `任务 ${id}`, assignedTo: 'spring', status: 'wait' })
+  const fetchImpl = async (url) => {
+    const parsed = new URL(url)
+    if (parsed.pathname === '/api.php/v2/users/login') return json({ token: 'v2' })
+    if (parsed.pathname === '/api.php/v2/users/me') return json({ user: { account: 'spring' } })
+    if (parsed.pathname === '/api.php/v2/my/tasks') {
+      const page = Number(parsed.searchParams.get('pageID'))
+      pages.push(page)
+      return json({
+        pager: { recTotal: 201, recPerPage: 200, pageID: page },
+        tasks: page === 1 ? Array.from({ length: 200 }, (_, i) => row(i + 1)) : [row(201)],
+      })
+    }
+    throw new Error(`unexpected ${url}`)
+  }
+  const mine = await fetchMyItems({ baseUrl: BASE, version: 'v2', credentials: CREDS, scope: 'project', fetchImpl })
+  assert.deepEqual(pages, [1, 2])
+  assert.equal(mine.items.length, 201)
+})
+
+test('a network failure does not pin the auto channel to v1', async () => {
+  resetZentaoTokens()
+  const down = async () => { throw new TypeError('fetch failed') }
+  await assert.rejects(
+    () => resolveVersion({ baseUrl: BASE, version: 'auto', credentials: CREDS, fetchImpl: down }),
+    /无法连接/,
+  )
+  // The next call probes again and takes the real answer instead of the cached
+  // v1 that a single blip used to leave behind.
+  const healthy = async (url) => (String(url).endsWith('/users/login') ? json({ token: 'v2' }) : json({}))
+  assert.equal(await resolveVersion({ baseUrl: BASE, version: 'auto', credentials: CREDS, fetchImpl: healthy }), 'v2')
 })

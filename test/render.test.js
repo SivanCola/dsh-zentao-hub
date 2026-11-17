@@ -603,19 +603,100 @@ test('the bug matrix groups 严重程度 × 状态 and keeps strays reachable', 
   assert.deepEqual(matrix.stray.map((item) => item.id), ['bug-6'])
 })
 
-test('the write button only appears where a transition makes sense', async () => {
+test('write actions follow the item state', async () => {
   let captured
   globalThis.window = { __ModuleLoader__: { load: (bundle) => { captured = bundle } } }
   await import('../lib/client.js')
-  const { WriteButton } = (captured ?? globalThis.__taskHubBundle).factory(() => fakeReact()).__test
+  const { WriteMenu, TaskActions, actionsFor } = (captured ?? globalThis.__taskHubBundle).factory(() => fakeReact()).__test
   const t = (key) => key
   const onWrite = () => {}
 
-  assert.match(render(WriteButton({ story: { kind: 'task', status: 'wait' }, t, onWrite })), /writeStart/)
-  assert.equal(WriteButton({ story: { kind: 'task', status: 'wait' }, t }), null)
-  assert.equal(WriteButton({ story: { kind: 'task', status: 'doing' }, t, onWrite }), null)
-  assert.equal(WriteButton({ story: { kind: 'task', status: 'wait', completed: true }, t, onWrite }), null)
-  assert.match(render(WriteButton({ story: { kind: 'bug', status: 'active' }, t, onWrite })), /writeResolve/)
-  assert.equal(WriteButton({ story: { kind: 'bug', status: 'resolved', resolved: true }, t, onWrite }), null)
-  assert.equal(WriteButton({ story: { kind: 'story', requirementType: 'story' }, t, onWrite }), null)
+  // Tasks move wait -> doing -> done/closed; 「关闭」 is always last.
+  assert.deepEqual(actionsFor({ kind: 'task', status: 'wait' }), ['start', 'assign', 'close'])
+  assert.deepEqual(actionsFor({ kind: 'task', status: 'doing' }), ['finish', 'assign', 'close'])
+  assert.deepEqual(actionsFor({ kind: 'task', status: 'done' }), ['activate', 'assign', 'close'])
+  assert.deepEqual(actionsFor({ kind: 'task', status: 'closed', completed: true }), ['activate', 'assign'])
+  // Bugs keep 「解决」 first; 「确认」 only until the bug has been confirmed.
+  assert.deepEqual(actionsFor({ kind: 'bug', status: 'active' }), ['resolve', 'confirm', 'assign', 'close'])
+  assert.deepEqual(actionsFor({ kind: 'bug', status: 'active', confirmed: true }), ['resolve', 'assign', 'close'])
+  assert.deepEqual(actionsFor({ kind: 'bug', status: 'resolved', resolved: true }), ['close', 'activate', 'assign'])
+  assert.deepEqual(actionsFor({ kind: 'bug', status: 'closed', completed: true }), ['activate', 'assign'])
+  assert.deepEqual(actionsFor({ kind: 'story', requirementType: 'story' }), [])
+
+  assert.equal(WriteMenu({ story: { kind: 'story', requirementType: 'story' }, t, onWrite }), null)
+  assert.equal(WriteMenu({ story: { kind: 'task', status: 'done' }, t }), null)
+
+  // Rendered inline: no disclosure button, primary first, close outlined red.
+  const done = WriteMenu({ story: { kind: 'task', status: 'done' }, t, onWrite })
+  const buttons = done.props.children
+  assert.equal(buttons.length, 3)
+  assert.deepEqual(buttons.map((button) => button.props.children), ['action_activate', 'action_assign', 'action_close'])
+  assert.match(buttons[0].props.className, /tt-btn-primary/)
+  assert.doesNotMatch(buttons[1].props.className, /tt-btn-primary|tt-btn-danger/)
+  assert.match(buttons[2].props.className, /tt-btn-danger/)
+  assert.doesNotMatch(render(done), /⋯/)
+
+  // Dispatch is the main button only while nobody has started the work.
+  const card = (story) => TaskActions({ story, t, onDispatch: () => {}, onWrite: () => {} }).props.children
+  const waiting = card({ kind: 'task', status: 'wait' })
+  assert.match(waiting[1].props.className, /tt-btn-primary/)
+  assert.equal(waiting[2], null)
+  const doing = card({ kind: 'task', status: 'doing' })
+  assert.doesNotMatch(doing[1].props.className, /tt-btn-primary/)
+  const finished = card({ kind: 'task', status: 'done', completed: true })
+  assert.doesNotMatch(finished[1].props.className, /tt-btn-primary/)
+  // A finished item says why dispatching again needs a reactivation first.
+  assert.equal(finished[2].props.className, 'tt-hint tt-action-hint')
+  assert.equal(finished[2].props.children, 'dispatchCompletedHint')
+})
+
+
+test('a broken write plan cannot be confirmed, and roster failures are reported', async () => {
+  let captured
+  globalThis.window = { __ModuleLoader__: { load: (bundle) => { captured = bundle } } }
+  await import('../lib/client.js')
+  const { WriteModal } = (captured ?? globalThis.__taskHubBundle).factory(() => fakeReact()).__test
+  const t = (key) => key
+  const item = { id: 'task-2260', shortId: '#2260', name: '调研', kind: 'task', vStatus: '未开始' }
+
+  const find = (node, pred) => {
+    if (!node || typeof node !== 'object') return null
+    if (pred(node)) return node
+    const kids = node.props?.children
+    for (const kid of Array.isArray(kids) ? kids : [kids]) {
+      const hit = find(kid, pred)
+      if (hit) return hit
+    }
+    return null
+  }
+  const plan = { summary: '把任务指派给 anna', request: { method: 'PUT', path: '/tasks/2260', body: { assignedTo: 'anna' } } }
+  const modal = (patch) =>
+    WriteModal({
+      t,
+      item,
+      action: 'assign',
+      input: { assignedTo: '' },
+      setInput: () => {},
+      plan,
+      planError: '',
+      busy: false,
+      error: null,
+      resolutions: [],
+      bugTypes: [],
+      users: [],
+      peopleError: '',
+      onSubmit: () => {},
+      onClose: () => {},
+      ...patch,
+    })
+  const confirmOf = (node) => find(node, (n) => n.type === 'button' && n.props?.children === 'writeConfirm')
+
+  assert.equal(confirmOf(modal({})).props.disabled, false)
+
+  const broken = confirmOf(modal({ plan: null, planError: '不支持的回写动作：assign' }))
+  assert.equal(broken.props.disabled, true)
+  assert.match(broken.props.title, /不支持的回写动作/)
+
+  // A failing roster keeps its reason; it must not read as "nobody to pick".
+  assert.ok(find(modal({ peopleError: '禅道返回 404' }), (n) => String(n.props?.hint ?? '').includes('404')))
 })

@@ -158,3 +158,42 @@ test('an invalid base leaves existing user stash and clean worktree untouched', 
   assert.equal(await gitExec(repo, ['status', '--porcelain']), '')
   assert.equal(await gitExec(repo, ['branch', '--show-current']), 'main\n')
 })
+
+test('an unstaged edit keeps its full path through status parsing and backup', async () => {
+  const repo = await tempRepo()
+  const backupRoot = path.join(repo, '..', `backups-${Date.now()}`)
+  // ` M a.txt` is the first record and starts with a space: trimming it used to
+  // shorten the path to `.txt`, so the file was silently left out of the backup.
+  await fs.writeFile(path.join(repo, 'a.txt'), 'local change\n')
+
+  const snapshot = await switchBranch({
+    repoRoot: repo,
+    branch: 'feature-parsed',
+    create: true,
+    startPoint: 'main',
+    exec: git,
+    backupRoot,
+  })
+  assert.deepEqual(snapshot.preserved, ['a.txt'])
+  assert.ok(await exists(path.join(snapshot.backupDir, 'files', 'a.txt')), 'the edited file is in the backup')
+  assert.equal(await fs.readFile(path.join(snapshot.backupDir, 'files', 'a.txt'), 'utf8'), 'local change\n')
+})
+
+test('rollback from a detached HEAD restores the commit, not the word HEAD', async () => {
+  const repo = await tempRepo()
+  const commit = (await git(['rev-parse', '--verify', 'HEAD'], repo)).stdout
+  await git(['checkout', '--detach', commit], repo)
+  const snapshot = await switchBranch({
+    repoRoot: repo,
+    branch: 'feature-detached',
+    create: true,
+    startPoint: 'HEAD',
+    exec: git,
+    backupRoot: path.join(repo, '..', `backups-${Date.now()}`),
+  })
+  assert.equal(snapshot.originalBranch, 'HEAD')
+  const rolled = await rollbackBranch({ repoRoot: repo, snapshot, exec: git })
+  assert.equal(rolled.ok, true)
+  assert.equal(await gitExec(repo, ['rev-parse', 'HEAD']), `${commit}\n`)
+  assert.equal((await git(['rev-parse', '--abbrev-ref', 'HEAD'], repo)).stdout, 'HEAD', 'HEAD stays detached')
+})

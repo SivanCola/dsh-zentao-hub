@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import test, { after } from 'node:test'
@@ -37,6 +37,7 @@ function trackerFetch(url) {
   const { hostname, pathname } = new URL(url)
   if (hostname !== 'zentao.example.test') throw new Error('Unexpected request: ' + hostname + pathname)
   if (pathname.endsWith('/tokens')) return Response.json({ token: 'fake-zt-token' })
+  if (pathname.endsWith('/users/login')) return Response.json({ status: 'success', token: 'fake-zt-token' })
   if (pathname.endsWith('/user')) return Response.json({ profile: { account: 'account', realname: '测试用户' } })
   if (pathname.endsWith('/products')) return Response.json({ products: [{ id: '7', name: '产品 A' }] })
   if (pathname.endsWith('/projects')) return Response.json({ projects: [{ id: '3', name: '项目 B' }] })
@@ -57,6 +58,15 @@ function trackerFetch(url) {
     return Response.json({ id: '101', spec: '<p>最新需求正文</p>', files: [{ id: '4', title: 'details.txt', extension: 'txt' }] })
   }
   if (pathname.endsWith('/files/4')) return new Response('new attachment')
+  if (pathname.endsWith('/users')) {
+    return Response.json({
+      total: 2,
+      users: [
+        { id: 1, account: 'account', realname: '测试用户', role: 'dev' },
+        { id: 2, account: 'anna', realname: '安娜', role: 'qa' },
+      ],
+    })
+  }
   throw new Error('Unexpected request: ' + pathname)
 }
 
@@ -135,6 +145,7 @@ test('the host registers its routes under /api/zentao and reports state', async 
     '/api/zentao/state',
     '/api/zentao/status',
     '/api/zentao/tasks',
+    '/api/zentao/users',
     '/api/zentao/write',
   ])
   const state = await host.value('state')
@@ -144,6 +155,9 @@ test('the host registers its routes under /api/zentao and reports state', async 
     myWork: false,
     writeBack: false,
     assets: true,
+    // Capabilities the panel can trust instead of guessing from a version.
+    backfill: true,
+    reassign: true,
   })
   assert.equal(state.credentials.zentao.password, true)
   assert.equal(state.credentialPresence.password, true)
@@ -408,4 +422,72 @@ test('the task branch is prepared or reused when the original workspace moved on
       assert.equal(result.previousSessions[0].sessionId, original.sessionId)
     })
   }
+})
+
+test('the reassignment roster comes from ZenTao, not from a hard-coded list', async (t) => {
+  t.mock.method(globalThis, 'fetch', trackerFetch)
+  await store.saveSettings({
+    zentao: {
+      baseUrl: 'https://zentao.example.test',
+      transport: 'v2',
+      account: 'account',
+      scope: 'project',
+    },
+  })
+  const host = setupHost({ secrets: { ZENTAO_PASSWORD: 'pw' } })
+  const value = await host.value('users')
+  assert.deepEqual(value.users, [
+    { account: 'account', name: '测试用户', role: 'dev' },
+    { account: 'anna', name: '安娜', role: 'qa' },
+  ])
+  // A second call is served from the cache in lib/zentao.js.
+  assert.deepEqual((await host.value('users')).users, value.users)
+})
+
+test('the container picker survives a gateway that needs Basic Auth', async (t) => {
+  t.mock.method(globalThis, 'fetch', trackerFetch)
+  await store.saveSettings({
+    zentao: {
+      baseUrl: 'https://zentao.example.test',
+      transport: 'v1',
+      account: 'account',
+      basicAuth: true,
+      basicAccount: 'gateway',
+      containerIds: ['7'],
+    },
+  })
+  const host = setupHost({ secrets: { ZENTAO_PASSWORD: 'pw' } })
+  // This used to throw `apiVersion is not defined` before any request was made.
+  const value = await host.value('containers', {
+    baseUrl: 'https://zentao.example.test',
+    transport: 'v1',
+    account: 'account',
+    password: 'pw',
+    basicAuth: true,
+    basicAccount: 'gateway',
+    basicPassword: 'gwpw',
+  })
+  assert.deepEqual(value.products.map((item) => item.id), ['7'])
+})
+
+test('draft attachments are private and old ones are pruned', async () => {
+  const drafts = await import('../lib/drafts.js')
+  const root = await mkdtemp(path.join(os.tmpdir(), 'dsh-draft-mode-'))
+  const items = await drafts.saveDraftAssets({
+    sessionId: 'session-1',
+    files: [{ name: 'notes.txt', data: Buffer.from('x') }],
+    root,
+  })
+  const file = path.join(root, 'session-1', '0.bin')
+  const manifest = path.join(root, 'session-1', 'manifest.json')
+  assert.equal((await stat(file)).mode & 0o777, 0o600)
+  assert.equal((await stat(manifest)).mode & 0o777, 0o600)
+  assert.equal(items.length, 1)
+  // A folder older than the TTL goes away on the next write.
+  const stale = path.join(root, 'stale-session')
+  await mkdir(stale, { recursive: true })
+  await utimes(stale, new Date('2020-01-01'), new Date('2020-01-01'))
+  await drafts.saveDraftAssets({ sessionId: 'session-2', files: [], root })
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  await assert.rejects(() => stat(stale))
 })

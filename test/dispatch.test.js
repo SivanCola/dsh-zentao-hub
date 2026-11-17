@@ -419,3 +419,28 @@ test('commitAll helper keeps the repo clean for follow-up work', async () => {
   await commitAll(repo, 'add b')
   assert.equal((await gitExec(repo, ['status', '--porcelain'])).trim(), '')
 })
+
+test('a branch that is already checked out is reused, not failed', async () => {
+  const { prepareCheckout } = await import('../lib/dispatch.js')
+  const calls = []
+  const repoRoot = '/tmp/dsh-reuse-repo'
+  const exec = async (args) => {
+    const key = args.join(' ')
+    calls.push(key)
+    if (key === 'rev-parse --show-toplevel') return { ok: true, stdout: repoRoot }
+    if (key.startsWith('check-ref-format')) return { ok: true, stdout: '' }
+    if (key.startsWith('show-ref --verify')) return { ok: true, stdout: '' }
+    if (key === 'worktree list --porcelain') {
+      return { ok: true, stdout: `worktree ${repoRoot}\nHEAD abc123\nbranch refs/heads/feature-x\n` }
+    }
+    if (key.startsWith('rev-parse --abbrev-ref HEAD')) return { ok: false, stderr: 'not a worktree' }
+    return { ok: false, stderr: `unexpected ${key}` }
+  }
+  const checkout = await prepareCheckout(
+    { repoPath: repoRoot, branchName: 'feature-x', baseBranch: 'main', useWorktree: true },
+    exec,
+  )
+  assert.equal(checkout.cwd, repoRoot)
+  assert.equal(checkout.snapshot.switched, false)
+  assert.ok(!calls.some((call) => call.startsWith('worktree add')), 'git never tries a second checkout')
+})
