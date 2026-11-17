@@ -491,3 +491,22 @@ test('draft attachments are private and old ones are pruned', async () => {
   await new Promise((resolve) => setTimeout(resolve, 50))
   await assert.rejects(() => stat(stale))
 })
+
+test('switching only the read scope saves without touching credentials', async () => {
+  await store.saveSettings({
+    zentao: {
+      baseUrl: 'https://zentao.example.test',
+      transport: 'v2',
+      account: 'account',
+      scope: 'product',
+      // A gateway in front of ZenTao must not force its password again here.
+      basicAuth: true,
+      basicAccount: 'gateway',
+    },
+  })
+  const host = setupHost({ secrets: { ZENTAO_PASSWORD: 'pw' } })
+  const saved = await host.value('settings', { zentao: { scope: 'bug' } })
+  assert.equal(saved.settings.zentao.scope, 'bug')
+  assert.equal(saved.settings.zentao.basicAuth, true)
+  assert.equal(saved.settings.zentao.basicAccount, 'gateway')
+})
