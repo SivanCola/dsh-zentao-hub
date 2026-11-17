@@ -528,7 +528,7 @@ test('a new conversation on a dispatched task shows the saved branch and skips c
   assert.ok(!nodes.some((node) => node.type === 'input' || node.type === 'select'))
 })
 
-test('the sidebar icon injects its own badge source and draws the count', async () => {
+test('the sidebar icon stays a glyph and the count lives in the label', async () => {
   let captured
   globalThis.window = { __ModuleLoader__: { load: (bundle) => { captured = bundle } } }
   await import('../lib/client.js')
@@ -549,49 +549,25 @@ test('the sidebar icon injects its own badge source and draws the count', async 
   })
   const icon = registered.find((entry) => entry.spec.name === 'sidebar.panellist')
   assert.ok(icon, 'sidebar icon not registered')
-  // The only supported way to feed a panel icon: inject -> hooks -> prop.
-  const injected = icon.spec.inject()
-  assert.deepEqual(Object.keys(injected), ['hooks'])
-  assert.equal(typeof injected.hooks.badge.getSnapshot, 'function')
+  // No injected hooks any more: nothing is drawn on the glyph.
+  assert.equal(icon.spec.inject, undefined)
 
-  const { Badge } = client.__test
-  assert.equal(Badge({ count: 0 }), null)
-  assert.equal(Badge({ count: 3 }).props.className, 'tt-nav-badge')
-  assert.equal(Badge({ count: 3 }).props.children, '3')
-  // A 12px pill holds one digit; the exact number stays in the tooltip.
-  assert.equal(Badge({ count: 640 }).props.children, '9+')
-  assert.equal(Badge({ count: 640 }).props.title, '640')
-  assert.equal(Badge({ count: 9 }).props.children, '9')
-  assert.equal(Badge({ count: 10 }).props.children, '9+')
-  // While the panel is on screen the badge steps back instead of shouting.
-  assert.equal(Badge({ count: 3, dim: true }).props.className, 'tt-nav-badge tt-nav-badge-dim')
-  // The count also reaches the label, which the More menu and screen readers use.
+  const glyph = render(icon.component({ size: 16, active: false }))
+  assert.equal(glyph, '<span><svg><rect></rect><path></path><circle></circle></svg></span>')
+  // An active panel looks the same: the number is not on the icon at all.
+  assert.equal(
+    render(icon.component({ size: 16, active: true })),
+    '<span><svg><rect></rect><path></path><circle></circle></svg></span>',
+  )
+
+  // ... it is in the label, which the sidebar re-reads on every projection.
+  const { badgeStore } = client.__test
   assert.equal(icon.spec.label(), 'nav')
-  injected.hooks.badge.set({ open: 4, byKind: {} })
-  assert.equal(icon.spec.label(), 'nav (4)')
-  injected.hooks.badge.set({ open: 0, byKind: {} })
+  badgeStore.set({ open: 3, byKind: { task: 3, bug: 0, story: 0 } })
+  assert.equal(icon.spec.label(), 'nav (3)')
+  badgeStore.set({ open: 0, byKind: { task: 0, bug: 0, story: 0 } })
   assert.equal(icon.spec.label(), 'nav')
-
-  const empty = render(icon.component({ size: 16, active: false, useBadge: (select) => select({ open: 0 }) }))
-  assert.equal(empty, '<span><svg><rect></rect><path></path><circle></circle></svg></span>')
-
-  const activeIcon = icon.component({ size: 16, active: true, useBadge: (select) => select({ open: 3 }) })
-  const three = render(activeIcon)
-  assert.match(three, /<span>3<\/span>/)
-  assert.ok(three.indexOf('<svg>') < three.indexOf('<span>3<'), 'badge follows the glyph')
-  // `children[1]` is the Badge element, so read its props, not the span's class.
-  assert.equal(activeIcon.props.children[1].props.dim, true, 'the open panel dims its badge')
-  const idleIcon = icon.component({ size: 16, active: false, useBadge: (select) => select({ open: 3 }) })
-  assert.equal(idleIcon.props.children[1].props.dim, false)
-
-  const many = render(icon.component({ size: 16, active: false, useBadge: (select) => select({ open: 640 }) }))
-  assert.match(many, /9\+/)
-
-  // Without the injected hook (older renderer) the icon still draws.
-  const bare = render(icon.component({ size: 16, active: false }))
-  assert.match(bare, /svg/)
 })
-
 test('the bug matrix groups 严重程度 × 状态 and keeps strays reachable', async () => {
   let captured
   globalThis.window = { __ModuleLoader__: { load: (bundle) => { captured = bundle } } }

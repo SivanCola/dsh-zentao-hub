@@ -4,7 +4,7 @@
 
 A ZenTao panel for DSH: read the requirements, tasks and bugs assigned to you, pick a workspace, type a branch name, dispatch the item to an agent — and write the outcome back into ZenTao.
 
-This package is the ZenTao half of [dsh-task-hub](https://github.com/handsomeboy65/dsh-task-hub) (TAPD + ZenTao in one panel), with four capabilities added on top of the split: **switchable data channels (including the official zentao-cli)**, **地盘 ("my work") + a sidebar badge**, **a bug triage matrix**, and **state write-back**.
+This package is the ZenTao half of [dsh-task-hub](https://github.com/handsomeboy65/dsh-task-hub) (TAPD + ZenTao in one panel), with four capabilities added on top of the split: **switchable data channels (including the official zentao-cli)**, **地盘 ("my work") + an open-item count**, **a bug triage matrix**, and **state write-back**.
 
 ## The four capabilities
 
@@ -21,12 +21,13 @@ The `cli` channel takes a command line (default `zentao`, and `npx zentao-cli@0.
 
 **Why switch to cli:** the v1 approach enumerates every product/project and filters the assignee locally, so request volume grows with container count, while `my` is filtered server-side. The write endpoints, the `E2010` version check and the "re-read after writing" rule are already implemented there.
 
-### 2. 地盘 ("my work") + a sidebar badge
+### 2. 地盘 ("my work") + an open-item count
 
 - When the channel supports `/my/*`, the panel reads "assigned to me" directly and stops asking for products/projects (v1 degrades to enumeration; ZenTao below 22.5 falls back automatically).
-- The sidebar icon carries a badge with the open-item count. DSH's `sidebar.panellist` only hands icons `{ size, active }` — there is **no badge API** — so the plugin draws it: the registration passes `inject: () => ({ hooks: { badge } })` with an internal observable, the renderer turns that into a `useBadge(selector)` prop, and the icon positions a bubble over its glyph. The count comes from a cheap `/api/zentao/counts` poll (counts only, never the list), refreshed immediately on `connection/reset`.
+- The sidebar row reads 「禅道 (N)」, where N is the number of unfinished items in the current scope. DSH's `sidebar.panellist` only hands icons `{ size, active }` and the sidebar owns the row layout — there is **no badge slot** — so nothing is drawn on the glyph: the count lives in `label`, a thunk the sidebar re-reads on every projection, which also means screen readers and the collapsed "More" menu get the number.
+- Sources: updated whenever the list loads, plus a cheap `/api/zentao/counts` poll (counts only, never the list) every 180s and immediately on `connection/reset`.
 
-Known trade-offs: the same icon is reused inside the collapsed sidebar's "More" menu, so the badge appears there too, and the icon sits under `aria-hidden`, so the badge is not announced by screen readers.
+Known trade-off: `label` is not reactive — the number refreshes when the sidebar next projects (opening a panel or switching a session does it). Bring back a small dot on the glyph if an instant visual cue matters.
 
 ### 3. Bug triage matrix
 
@@ -93,7 +94,7 @@ Open 「设置」 in the panel:
 ## Development
 
 ```bash
-npm test     # 92 tests: pure helpers, the three read channels, write planning/execution, git flows, host routes, client rendering and the badge
+npm test     # 114 tests: pure helpers, the three read channels, write planning/execution, git flows, host routes, client rendering and the badge
 ```
 
 An installed bundle needs a DSH restart to load the new JS generation.
