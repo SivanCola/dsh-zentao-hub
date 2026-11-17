@@ -34,7 +34,7 @@ test('client registers a main panel and a sidebar icon that both render', async 
   await import('../lib/client.js')
   globalThis.__taskHubBundle = captured
   assert.ok(captured, 'client bundle was not registered')
-  assert.equal(captured.id, 'dsh-zentao')
+  assert.equal(captured.id, 'dsh-zentao-hub')
 
   const client = captured.factory((name) => {
     if (name === 'react') return React

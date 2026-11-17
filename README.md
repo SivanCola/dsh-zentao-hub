@@ -55,10 +55,10 @@ PUT /tasks/31/start   { realStarted: "2026-11-17 10:00:00", comment: "已派发 
 ## 安装
 
 ```sh
-dsh plugin --profile web add github:SivanCola/dsh-zentao
+dsh plugin --profile web add github:SivanCola/dsh-zentao-hub
 ```
 
-> **注意安装名**：npm 上另有一个同名包 `dsh-zentao`，**不是本项目**（它的 `repository` 字段为空，与本仓库无关）。本项目目前只通过 GitHub 安装，请照上面这条命令写，不要写 `dsh plugin add dsh-zentao`。
+> **包名与仓库名**：包名是 `dsh-zentao-hub`，仓库名也是 `dsh-zentao-hub`（`dsh-zentao` 这个名字在 npm 上已被他人的无关插件占用，所以刻意避开）。目前**没有发到 npm**，安装请用上面这条 GitHub 命令。
 
 装完重启 `dsh web`，侧边栏会出现「禅道」。桌面端请在应用内的 **设置 → 插件** 里安装。需要 DSH 0.2.1+。用 `cli` 通道还需要 `npm i -g zentao-cli`（建议 0.4.4+）并先 `zentao auth login`。
 
