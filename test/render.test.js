@@ -717,3 +717,53 @@ test('a broken write plan cannot be confirmed, and roster failures are reported'
   // A failing roster keeps its reason; it must not read as "nobody to pick".
   assert.ok(find(modal({ peopleError: '禅道返回 404' }), (n) => String(n.props?.hint ?? '').includes('404')))
 })
+
+test('containers are only offered when the list came from enumeration', async () => {
+  let captured
+  globalThis.window = { __ModuleLoader__: { load: (bundle) => { captured = bundle } } }
+  await import('../lib/client.js')
+  const { containersNeeded, containerChoices, containerPatch } =
+    (captured ?? globalThis.__taskHubBundle).factory(() => fakeReact()).__test
+
+  // /my/* answered: containers play no part in the query.
+  assert.equal(containersNeeded({ serverFiltered: true }), false)
+  assert.equal(containersNeeded(undefined), false)
+  // Enumeration (v1, 地盘 off, auto fallback) needs them.
+  assert.equal(containersNeeded({ channel: 'v1' }), true)
+  assert.equal(containersNeeded({ serverFiltered: false }), true)
+
+  const catalog = [
+    { kind: 'product', id: '6', name: '天天跳绳' },
+    { kind: 'product', id: '5', name: 'Kuaidong' },
+    { kind: 'project', id: '9', name: '某项目' },
+  ]
+  assert.deepEqual(containerChoices({ catalog, scope: 'product' }).map((c) => c.id), ['6', '5'])
+  assert.deepEqual(containerChoices({ catalog, scope: 'project' }).map((c) => c.id), ['9'])
+  // A saved id the catalogue no longer returns is still offered, named from settings.
+  const kept = containerChoices({ catalog, scope: 'product', savedIds: ['6', '7'], names: { 7: '体智云 APP' } })
+  assert.deepEqual(kept.map((c) => `${c.id}:${c.name}`), ['6:天天跳绳', '5:Kuaidong', '7:体智云 APP'])
+
+  const choices = containerChoices({ catalog, scope: 'product' })
+  assert.deepEqual(containerPatch(['6', '6', ' 5 ', 'x'], choices), {
+    containerIds: ['6', '5'],
+    containerNames: { 6: '天天跳绳', 5: 'Kuaidong' },
+  })
+  assert.deepEqual(containerPatch([], choices), { containerIds: [], containerNames: {} })
+})
+
+test('the container picker renders a trigger and an empty catalogue hint', async () => {
+  let captured
+  globalThis.window = { __ModuleLoader__: { load: (bundle) => { captured = bundle } } }
+  await import('../lib/client.js')
+  const { ContainerPicker } = (captured ?? globalThis.__taskHubBundle).factory(() => fakeReact()).__test
+  const trigger = ContainerPicker({
+    t: (key) => key,
+    scope: 'product',
+    savedIds: ['6', '5'],
+    savedNames: { 6: '天天跳绳', 5: 'Kuaidong' },
+    onApplied: () => {},
+  })
+  assert.equal(trigger.props.className, 'tt-scope')
+  assert.match(render(trigger), /containersLabel/)
+  assert.match(render(trigger), /· 2/)
+})
