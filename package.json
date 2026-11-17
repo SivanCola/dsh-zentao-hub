@@ -1,6 +1,6 @@
 {
   "name": "dsh-zentao-hub",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "ZenTao panel for DSH: list the requirements, tasks and bugs assigned to you through the REST API or zentao-cli, dispatch an agent on a branch you name, and write the outcome back.",
   "license": "MIT",

@@ -553,11 +553,13 @@ test('the sidebar icon stays a glyph and the count lives in the label', async ()
   assert.equal(icon.spec.inject, undefined)
 
   const glyph = render(icon.component({ size: 16, active: false }))
-  assert.equal(glyph, '<span><svg><rect></rect><path></path><circle></circle></svg></span>')
+  // Same mark as icon.svg: an open circle plus the check, nothing else.
+  assert.equal(glyph, '<span><svg><circle></circle><path></path></svg></span>')
+  assert.doesNotMatch(glyph, /<rect>/, 'the old document glyph is gone')
   // An active panel looks the same: the number is not on the icon at all.
   assert.equal(
     render(icon.component({ size: 16, active: true })),
-    '<span><svg><rect></rect><path></path><circle></circle></svg></span>',
+    '<span><svg><circle></circle><path></path></svg></span>',
   )
 
   // ... it is in the label, which the sidebar re-reads on every projection.

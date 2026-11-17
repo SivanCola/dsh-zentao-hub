@@ -109,6 +109,10 @@ An installed bundle needs a DSH restart to load the new JS generation.
 
 ## Changelog
 
+### 0.2.1
+
+- The sidebar glyph now matches `icon.svg`: only the package icon had been changed, while the sidebar draws its own inline SVG, so a restart could not fix it.
+
 ### 0.2.0
 
 - **The v2 channel works**: `/users/me` replaces the nonexistent `/user` (a 401 there aborted the whole `/my/*` path), paging reads `pager.recTotal` (no more first-page-only lists), and `auto` no longer pins a site to v1 after one network blip.
