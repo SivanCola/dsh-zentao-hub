@@ -1,10 +1,10 @@
-# dsh-zentao
+# dsh-zentao-hub
 
 **English** · [简体中文](README.md)
 
 A ZenTao panel for DSH: read the requirements, tasks and bugs assigned to you, pick a workspace, type a branch name, dispatch the item to an agent — and write the outcome back into ZenTao.
 
-This package is the ZenTao half of [dsh-task-hub](https://github.com/handsomeboy65/dsh-task-hub) (TAPD + ZenTao in one panel), with four capabilities added on top of the split: **switchable data channels (including the official zentao-cli)**, **地盘 ("my work") + an open-item count**, **a bug triage matrix**, and **state write-back**.
+This package is the ZenTao half of dsh-task-hub (TAPD + ZenTao in one panel), with four capabilities added on top of the split: **switchable data channels (including the official zentao-cli)**, **地盘 ("my work") + an open-item count**, **a bug triage matrix**, and **state write-back**.
 
 ## The four capabilities
 
@@ -106,3 +106,8 @@ An installed bundle needs a DSH restart to load the new JS generation.
 - Assignee filtering is still local on v1, so request volume grows with the number of containers.
 - Asset limits: 6 MB per image, 20 MB total.
 - The plugin does not plan the work; the dispatched agent does.
+
+## Links
+
+- [dsh-task-hub](https://github.com/handsomeboy65/dsh-task-hub) — the upstream TAPD + ZenTao project this plugin was split from.
+- [npm: dsh-zentao-hub](https://www.npmjs.com/package/dsh-zentao-hub)

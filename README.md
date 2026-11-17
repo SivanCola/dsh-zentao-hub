@@ -1,10 +1,10 @@
-# dsh-zentao
+# dsh-zentao-hub
 
 [English](README.en.md) · **简体中文**
 
 DSH 的禅道面板：从 **禅道** 里读取分配给你的需求、任务与缺陷，选一个工作区、手填分支名，把选中的条目派发给 Agent；干完之后把状态和一句备注写回禅道。
 
-本包是从 [dsh-task-hub](https://github.com/handsomeboy65/dsh-task-hub)（TAPD + 禅道双来源）中把禅道部分拆分出来的独立插件，并在拆分基础上补齐了四条能力：**数据通道可切换（含官方 zentao-cli）**、**「我的地盘」+ 未完成计数**、**Bug 分诊矩阵**、**状态回写**。
+本包是从 dsh-task-hub（TAPD + 禅道双来源）中把禅道部分拆分出来的独立插件，并在拆分基础上补齐了四条能力：**数据通道可切换（含官方 zentao-cli）**、**「我的地盘」+ 未完成计数**、**Bug 分诊矩阵**、**状态回写**。
 
 ## 四条能力
 
@@ -128,3 +128,8 @@ npm test     # 114 项：纯函数、v1/v2/cli 三条读通道、回写计划与
 - 处理人过滤在 v1 通道下仍是本地的，请求量随容器数增长。
 - 附件上限：单图 6MB、总附件 20MB。
 - 不代替 Agent 执行计划；派发后由会话里的 Agent 自己规划与实现。
+
+## 相关链接
+
+- [dsh-task-hub](https://github.com/handsomeboy65/dsh-task-hub)：TAPD + 禅道双来源的上游项目，本插件由它拆分而来。
+- [npm: dsh-zentao-hub](https://www.npmjs.com/package/dsh-zentao-hub)
