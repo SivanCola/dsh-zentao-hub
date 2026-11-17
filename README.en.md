@@ -107,6 +107,16 @@ An installed bundle needs a DSH restart to load the new JS generation.
 - Asset limits: 6 MB per image, 20 MB total.
 - The plugin does not plan the work; the dispatched agent does.
 
+## Changelog
+
+### 0.2.0
+
+- **The v2 channel works**: `/users/me` replaces the nonexistent `/user` (a 401 there aborted the whole `/my/*` path), paging reads `pager.recTotal` (no more first-page-only lists), and `auto` no longer pins a site to v1 after one network blip.
+- **Seven write-back actions**: start, finish, close, reactivate, assign, resolve, confirm — with required fields prefilled for finish and a fuzzy-searchable assignee roster.
+- **26 audit findings fixed**, five of them severe: `git status -z` losing the first path (so the pre-switch backup silently skipped a file), untracked files overwritten without a trace, saving settings always reporting `setApp is not defined`, a blank panel whenever the network dropped, and a crash on the container picker with Basic Auth enabled.
+- **Panel**: the read scope moved to the toolbar, containers appear only where the enumeration path uses them, the sidebar count became `禅道 (N)`, and the icon is now a Zen circle with a check.
+- Tests grew from 92 to 114.
+
 ## Links
 
 - [dsh-task-hub](https://github.com/handsomeboy65/dsh-task-hub) — the upstream TAPD + ZenTao project this plugin was split from.
